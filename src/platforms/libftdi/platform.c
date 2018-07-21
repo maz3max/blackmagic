@@ -44,7 +44,7 @@ cable_desc_t cable_desc[] = {
 		.dbus_ddr  = 0x1B,
 		.bitbang_tms_in_port_cmd = GET_BITS_LOW,
 		.bitbang_tms_in_pin = MPSSE_TMS,
-		.description = "FLOSS-JTAG",
+		//.description = "FLOSS-JTAG",
 		.name = "flossjtag"
 	},
 	{
