@@ -24,16 +24,16 @@
  */
 
 #include "general.h"
-#include "cdcacm.h"
-#include "usbuart.h"
+#include "usb.h"
+#include "aux_serial.h"
 
-#include <libopencm3/stm32/f1/rcc.h>
+#include <libopencm3/stm32/rcc.h>
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/cm3/scs.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/stm32/usart.h>
 #include <libopencm3/usb/usbd.h>
-#include <libopencm3/stm32/f1/adc.h>
+#include <libopencm3/stm32/adc.h>
 
 uint32_t led_error_port;
 uint16_t led_error_pin;
@@ -50,12 +50,7 @@ void platform_init(void)
 {
 	uint32_t data;
 	SCS_DEMCR |= SCS_DEMCR_VC_MON_EN;
-#ifdef ENABLE_DEBUG
-	void initialise_monitor_handles(void);
-	initialise_monitor_handles();
-#endif
-	rcc_clock_setup_in_hse_8mhz_out_72mhz();
-
+	rcc_clock_setup_pll(&rcc_hse_configs[RCC_CLOCK_HSE8_72MHZ]);
 	rev =  detect_rev();
 	/* Enable peripherals */
 	rcc_periph_clock_enable(RCC_AFIO);
@@ -67,11 +62,11 @@ void platform_init(void)
 	data |= AFIO_MAPR_SWJ_CFG_JTAG_OFF_SW_OFF;
 	AFIO_MAPR = data;
 	/* Setup JTAG GPIO ports */
-	gpio_set_mode(TMS_PORT, GPIO_MODE_OUTPUT_50_MHZ,
+	gpio_set_mode(TMS_PORT, GPIO_MODE_OUTPUT_2_MHZ,
 			GPIO_CNF_INPUT_FLOAT, TMS_PIN);
-	gpio_set_mode(TCK_PORT, GPIO_MODE_OUTPUT_50_MHZ,
+	gpio_set_mode(TCK_PORT, GPIO_MODE_OUTPUT_2_MHZ,
 			GPIO_CNF_OUTPUT_PUSHPULL, TCK_PIN);
-	gpio_set_mode(TDI_PORT, GPIO_MODE_OUTPUT_50_MHZ,
+	gpio_set_mode(TDI_PORT, GPIO_MODE_OUTPUT_2_MHZ,
 			GPIO_CNF_OUTPUT_PUSHPULL, TDI_PIN);
 
 	gpio_set_mode(TDO_PORT, GPIO_MODE_INPUT,
@@ -94,7 +89,7 @@ void platform_init(void)
 					  GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO8);
 		break;
 	}
-	platform_srst_set_val(false);
+	platform_nrst_set_val(false);
 
 	/* Remap TIM2 TIM2_REMAP[1]
 	 * TIM2_CH1_ETR -> PA15 (TDI, set as output above)
@@ -110,34 +105,31 @@ void platform_init(void)
 	SCB_VTOR = (uint32_t)&vector_table;
 
 	platform_timing_init();
-	cdcacm_init();
-	/* Don't enable UART if we're being debugged. */
-	if (!(SCS_DEMCR & SCS_DEMCR_TRCENA))
-		usbuart_init();
-	usbuart_init();
+	blackmagic_usb_init();
+	aux_serial_init();
 }
 
-void platform_srst_set_val(bool assert)
+void platform_nrst_set_val(bool assert)
 {
-	/* We reuse JSRST as SRST.*/
+	/* We reuse nTRST as nRST.*/
 	if (assert) {
-		gpio_set_mode(JRST_PORT, GPIO_MODE_OUTPUT_50_MHZ,
-		              GPIO_CNF_OUTPUT_OPENDRAIN, JRST_PIN);
+		gpio_set_mode(TRST_PORT, GPIO_MODE_OUTPUT_2_MHZ,
+		              GPIO_CNF_OUTPUT_OPENDRAIN, TRST_PIN);
 		/* Wait until requested value is active.*/
-		while (gpio_get(JRST_PORT, JRST_PIN))
-			gpio_clear(JRST_PORT, JRST_PIN);
+		while (gpio_get(TRST_PORT, TRST_PIN))
+			gpio_clear(TRST_PORT, TRST_PIN);
 	} else {
-		gpio_set_mode(JRST_PORT, GPIO_MODE_INPUT,
-					  GPIO_CNF_INPUT_PULL_UPDOWN, JRST_PIN);
+		gpio_set_mode(TRST_PORT, GPIO_MODE_INPUT,
+					  GPIO_CNF_INPUT_PULL_UPDOWN, TRST_PIN);
 		/* Wait until requested value is active.*/
-		while (!gpio_get(JRST_PORT, JRST_PIN))
-			gpio_set(JRST_PORT, JRST_PIN);
+		while (!gpio_get(TRST_PORT, TRST_PIN))
+			gpio_set(TRST_PORT, TRST_PIN);
 	}
 }
 
-bool platform_srst_get_val(void)
+bool platform_nrst_get_val(void)
 {
-	return gpio_get(JRST_PORT, JRST_PIN) == 0;
+	return gpio_get(TRST_PORT, TRST_PIN) == 0;
 }
 
 static void adc_init(void)
@@ -180,7 +172,7 @@ const char *platform_target_voltage(void)
 		ret[2] = '0' + val_in_100mV % 10;
 		return ret;
 	}
-	return "ABSENT!";
+	return NULL;
 }
 
 void set_idle_state(int state)
@@ -193,4 +185,9 @@ void set_idle_state(int state)
 		gpio_set_val(GPIOC, GPIO13, (!state));
 		break;
 	}
+}
+
+void platform_target_clk_output_enable(bool enable)
+{
+	(void)enable;
 }

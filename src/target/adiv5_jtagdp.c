@@ -29,87 +29,81 @@
 #include "jtagtap.h"
 #include "morse.h"
 
-#define JTAGDP_ACK_OK	0x02
-#define JTAGDP_ACK_WAIT	0x01
+#define JTAGDP_ACK_OK   0x02U
+#define JTAGDP_ACK_WAIT 0x01U
 
 /* 35-bit registers that control the ADIv5 DP */
-#define IR_ABORT	0x8
-#define IR_DPACC	0xA
-#define IR_APACC	0xB
-
-static uint32_t adiv5_jtagdp_read(ADIv5_DP_t *dp, uint16_t addr);
+#define IR_ABORT 0x8U
+#define IR_DPACC 0xAU
+#define IR_APACC 0xBU
 
 static uint32_t adiv5_jtagdp_error(ADIv5_DP_t *dp);
 
-static uint32_t adiv5_jtagdp_low_access(ADIv5_DP_t *dp, uint8_t RnW,
-					uint16_t addr, uint32_t value);
-
-static void adiv5_jtagdp_abort(ADIv5_DP_t *dp, uint32_t abort);
-
-void adiv5_jtag_dp_handler(jtag_dev_t *dev)
+void adiv5_jtag_dp_handler(uint8_t jd_index)
 {
-	ADIv5_DP_t *dp = (void*)calloc(1, sizeof(*dp));
-	if (!dp) {			/* calloc failed: heap exhaustion */
-		DEBUG("calloc: failed in %s\n", __func__);
+	ADIv5_DP_t *dp = calloc(1, sizeof(*dp));
+	if (!dp) { /* calloc failed: heap exhaustion */
+		DEBUG_WARN("calloc: failed in %s\n", __func__);
 		return;
 	}
 
-	dp->dev = dev;
-	dp->idcode = dev->idcode;
+	dp->dp_jd_index = jd_index;
 
-	dp->dp_read = adiv5_jtagdp_read;
-	dp->error = adiv5_jtagdp_error;
-	dp->low_access = adiv5_jtagdp_low_access;
-	dp->abort = adiv5_jtagdp_abort;
+	if ((PC_HOSTED == 0) || (!platform_jtag_dp_init(dp))) {
+		dp->dp_read = fw_adiv5_jtagdp_read;
+		dp->error = adiv5_jtagdp_error;
+		dp->low_access = fw_adiv5_jtagdp_low_access;
+		dp->abort = adiv5_jtagdp_abort;
+	}
 
-	adiv5_dp_init(dp);
+	adiv5_dp_init(dp, jtag_devs[jd_index].jd_idcode);
 }
 
-static uint32_t adiv5_jtagdp_read(ADIv5_DP_t *dp, uint16_t addr)
+uint32_t fw_adiv5_jtagdp_read(ADIv5_DP_t *dp, uint16_t addr)
 {
-	adiv5_jtagdp_low_access(dp, ADIV5_LOW_READ, addr, 0);
-	return adiv5_jtagdp_low_access(dp, ADIV5_LOW_READ,
-					ADIV5_DP_RDBUFF, 0);
+	fw_adiv5_jtagdp_low_access(dp, ADIV5_LOW_READ, addr, 0);
+	return fw_adiv5_jtagdp_low_access(dp, ADIV5_LOW_READ, ADIV5_DP_RDBUFF, 0);
 }
 
 static uint32_t adiv5_jtagdp_error(ADIv5_DP_t *dp)
 {
-	adiv5_jtagdp_low_access(dp, ADIV5_LOW_READ, ADIV5_DP_CTRLSTAT, 0);
-	return adiv5_jtagdp_low_access(dp, ADIV5_LOW_WRITE,
-				ADIV5_DP_CTRLSTAT, 0xF0000032) & 0x32;
+	fw_adiv5_jtagdp_low_access(dp, ADIV5_LOW_READ, ADIV5_DP_CTRLSTAT, 0);
+	return fw_adiv5_jtagdp_low_access(dp, ADIV5_LOW_WRITE, ADIV5_DP_CTRLSTAT, 0xf0000032U) & 0x32U;
 }
 
-static uint32_t adiv5_jtagdp_low_access(ADIv5_DP_t *dp, uint8_t RnW,
-					uint16_t addr, uint32_t value)
+uint32_t fw_adiv5_jtagdp_low_access(ADIv5_DP_t *dp, uint8_t RnW, uint16_t addr, uint32_t value)
 {
-	bool APnDP = addr & ADIV5_APnDP;
+	const bool APnDP = addr & ADIV5_APnDP;
 	addr &= 0xff;
-	uint64_t request, response;
+
+	const uint64_t request = ((uint64_t)value << 3U) | ((addr >> 1U) & 0x06U) | (RnW ? 1U : 0U);
+
+	uint64_t response;
 	uint8_t ack;
+
+	jtag_dev_write_ir(&jtag_proc, dp->dp_jd_index, APnDP ? IR_APACC : IR_DPACC);
+
 	platform_timeout timeout;
-
-	request = ((uint64_t)value << 3) | ((addr >> 1) & 0x06) | (RnW?1:0);
-
-	jtag_dev_write_ir(dp->dev, APnDP ? IR_APACC : IR_DPACC);
-
-	platform_timeout_set(&timeout, 2000);
+	platform_timeout_set(&timeout, 250);
 	do {
-		jtag_dev_shift_dr(dp->dev, (uint8_t*)&response, (uint8_t*)&request, 35);
+		jtag_dev_shift_dr(&jtag_proc, dp->dp_jd_index, (uint8_t *)&response, (uint8_t *)&request, 35);
 		ack = response & 0x07;
-	} while(!platform_timeout_is_expired(&timeout) && (ack == JTAGDP_ACK_WAIT));
+	} while (!platform_timeout_is_expired(&timeout) && ack == JTAGDP_ACK_WAIT);
 
-	if (ack == JTAGDP_ACK_WAIT)
-		raise_exception(EXCEPTION_TIMEOUT, "JTAG-DP ACK timeout");
-
-	if((ack != JTAGDP_ACK_OK))
+	if (ack == JTAGDP_ACK_WAIT) {
+		dp->abort(dp, ADIV5_DP_ABORT_DAPABORT);
+		dp->fault = 1;
+		return 0;
+	}
+	if (ack != JTAGDP_ACK_OK)
 		raise_exception(EXCEPTION_ERROR, "JTAG-DP invalid ACK");
 
 	return (uint32_t)(response >> 3);
 }
 
-static void adiv5_jtagdp_abort(ADIv5_DP_t *dp, uint32_t abort)
+void adiv5_jtagdp_abort(ADIv5_DP_t *dp, uint32_t abort)
 {
 	uint64_t request = (uint64_t)abort << 3;
-	jtag_dev_write_ir(dp->dev, IR_ABORT);
-	jtag_dev_shift_dr(dp->dev, NULL, (const uint8_t*)&request, 35);
+	jtag_dev_write_ir(&jtag_proc, dp->dp_jd_index, IR_ABORT);
+	jtag_dev_shift_dr(&jtag_proc, dp->dp_jd_index, NULL, (const uint8_t *)&request, 35);
 }

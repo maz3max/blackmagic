@@ -17,18 +17,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __GPIO_H
-#define __GPIO_H
+
+#ifndef PLATFORMS_STM32_GPIO_H
+#define PLATFORMS_STM32_GPIO_H
 
 #include <libopencm3/cm3/common.h>
 
-#ifndef STM32F4
-#	include <libopencm3/stm32/f1/memorymap.h>
-#	include <libopencm3/stm32/f1/gpio.h>
-#else
-#	include <libopencm3/stm32/f4/memorymap.h>
-#	include <libopencm3/stm32/f4/gpio.h>
-#endif
+#include <libopencm3/stm32/memorymap.h>
+#include <libopencm3/stm32/gpio.h>
 
 #define INLINE_GPIO
 
@@ -44,6 +40,7 @@ static inline void _gpio_set(uint32_t gpioport, uint16_t gpios)
 {
 	GPIO_BSRR(gpioport) = gpios;
 #ifdef STM32F4
+	/* FIXME: Check if doubling is still needed */
 	GPIO_BSRR(gpioport) = gpios;
 #endif
 }
@@ -51,10 +48,13 @@ static inline void _gpio_set(uint32_t gpioport, uint16_t gpios)
 
 static inline void _gpio_clear(uint32_t gpioport, uint16_t gpios)
 {
-#ifndef STM32F4
+#if defined(STM32F4)
+	GPIO_BSRR(gpioport) = gpios<<16;
+	/* FIXME: Check if doubling is still needed */
+	GPIO_BSRR(gpioport) = gpios<<16;
+#elif defined(GPIO_BRR)
 	GPIO_BRR(gpioport) = gpios;
 #else
-	GPIO_BSRR(gpioport) = gpios<<16;
 	GPIO_BSRR(gpioport) = gpios<<16;
 #endif
 }
@@ -67,5 +67,4 @@ static inline uint16_t _gpio_get(uint32_t gpioport, uint16_t gpios)
 #define gpio_get _gpio_get
 #endif
 
-#endif
-
+#endif /* PLATFORMS_STM32_GPIO_H */

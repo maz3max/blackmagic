@@ -23,11 +23,11 @@
  */
 
 #include "general.h"
-#include "cdcacm.h"
-#include "usbuart.h"
+#include "usb.h"
+#include "aux_serial.h"
 #include "morse.h"
 
-#include <libopencm3/stm32/f4/rcc.h>
+#include <libopencm3/stm32/rcc.h>
 #include <libopencm3/cm3/scb.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/stm32/exti.h>
@@ -46,7 +46,7 @@ void platform_init(void)
 		scb_reset_core();
 	}
 
-	rcc_clock_setup_hse_3v3(&rcc_hse_8mhz_3v3[RCC_CLOCK_3V3_48MHZ]);
+	rcc_clock_setup_pll(&rcc_hse_8mhz_3v3[RCC_CLOCK_3V3_168MHZ]);
 
 	/* Enable peripherals */
 	rcc_peripheral_enable_clock(&RCC_AHB2ENR, RCC_AHB2ENR_OTGFSEN);
@@ -76,16 +76,16 @@ void platform_init(void)
 			LED_UART | LED_IDLE_RUN | LED_ERROR | LED_BOOTLOADER);
 
 	platform_timing_init();
-	usbuart_init();
-	cdcacm_init();
+	blackmagic_usb_init();
+	aux_serial_init();
 }
 
-void platform_srst_set_val(bool assert) { (void)assert; }
-bool platform_srst_get_val(void) { return false; }
+void platform_nrst_set_val(bool assert) { (void)assert; }
+bool platform_nrst_get_val(void) { return false; }
 
 const char *platform_target_voltage(void)
 {
-	return "ABSENT!";
+	return NULL;
 }
 
 void platform_request_boot(void)
@@ -104,4 +104,9 @@ void platform_request_boot(void)
 	rcc_peripheral_enable_clock(&RCC_APB2ENR, RCC_APB2ENR_SYSCFGEN);
 	SYSCFG_MEMRM &= ~3;
 	SYSCFG_MEMRM |=  1;
+}
+
+void platform_target_clk_output_enable(bool enable)
+{
+	(void)enable;
 }

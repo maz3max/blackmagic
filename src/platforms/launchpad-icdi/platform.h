@@ -14,21 +14,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __PLATFORM_H
-#define __PLATFORM_H
+#ifndef PLATFORMS_LAUNCHPAD_ICDI_PLATFORM_H
+#define PLATFORMS_LAUNCHPAD_ICDI_PLATFORM_H
 
 #include <libopencm3/lm4f/gpio.h>
 #include <libopencm3/usb/usbd.h>
 
 #include "timing.h"
-#include "version.h"
 
-#define BOARD_IDENT             "Black Magic Probe (Launchpad ICDI), (Firmware " FIRMWARE_VERSION ")"
-#define BOARD_IDENT_DFU		"Black Magic (Upgrade) for Launchpad, (Firmware " FIRMWARE_VERSION ")"
-#define DFU_IDENT               "Black Magic Firmware Upgrade (Launchpad)"
-#define DFU_IFACE_STRING	"lolwut"
+#define PLATFORM_HAS_USBUART
+#define PLATFORM_IDENT      "(Launchpad ICDI) "
 
 extern uint8_t running_status;
+extern uint32_t swd_delay_cnt;
 
 #define TMS_PORT	GPIOA_BASE
 #define TMS_PIN		GPIO3
@@ -51,8 +49,8 @@ extern uint8_t running_status;
 #define SWCLK_PORT	TCK_PORT
 #define SWCLK_PIN	TCK_PIN
 
-#define SRST_PORT	GPIOA_BASE
-#define SRST_PIN	GPIO6
+#define NRST_PORT	GPIOA_BASE
+#define NRST_PIN	GPIO6
 
 #define TMS_SET_MODE()	{								\
 	gpio_mode_setup(TMS_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, TMS_PIN);		\
@@ -68,7 +66,7 @@ extern uint8_t running_status;
 	gpio_set_output_config(SWDIO_PORT, GPIO_OTYPE_PP, GPIO_DRIVE_2MA, SWDIO_PIN);		\
 }
 
-extern usbd_driver lm4f_usb_driver;
+extern const usbd_driver lm4f_usb_driver;
 #define USB_DRIVER	lm4f_usb_driver
 #define USB_IRQ		NVIC_USB0_IRQ
 #define USB_ISR		usb0_isr
@@ -98,8 +96,6 @@ extern usbd_driver lm4f_usb_driver;
 #define vasprintf vasiprintf
 #define snprintf sniprintf
 
-#define DEBUG(...)
-
 #define SET_RUN_STATE(state)	{running_status = (state);}
 #define SET_IDLE_STATE(state)	{}
 #define SET_ERROR_STATE(state)	SET_IDLE_STATE(state)
@@ -116,9 +112,6 @@ inline static uint8_t gpio_get(uint32_t port, uint8_t pin) {
 
 #define disconnect_usb() do { usbd_disconnect(usbdev,1); nvic_disable_irq(USB_IRQ);} while(0)
 
-static inline int platform_hwversion(void)
-{
-	        return 0;
-}
+static inline int platform_hwversion(void) { return 0; }
 
-#endif
+#endif /* PLATFORMS_LAUNCHPAD_ICDI_PLATFORM_H */

@@ -32,17 +32,19 @@
  * The core can then process the buffer to extract the frame.
  */
 #include "general.h"
-#include "cdcacm.h"
+#include "usb.h"
+#include "traceswo.h"
 
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/stm32/timer.h>
-#include <libopencm3/stm32/f1/rcc.h>
+#include <libopencm3/stm32/rcc.h>
 
-void traceswo_init(void)
+/* SWO decoding */
+static bool decoding = false;
+
+void traceswo_init(uint32_t swo_chan_bitmask)
 {
 	TRACE_TIM_CLK_EN();
-
-	timer_reset(TRACE_TIM);
 
 	/* Refer to ST doc RM0008 - STM32F10xx Reference Manual.
 	 * Section 14.3.4 - 14.3.6 (General Purpose Timer - Input Capture)
@@ -74,6 +76,9 @@ void traceswo_init(void)
 	timer_ic_enable(TRACE_TIM, TIM_IC2);
 
 	timer_enable_counter(TRACE_TIM);
+
+	traceswo_setmask(swo_chan_bitmask);
+	decoding = (swo_chan_bitmask != 0);
 }
 
 static uint8_t trace_usb_buf[64];
@@ -81,10 +86,12 @@ static uint8_t trace_usb_buf_size;
 
 void trace_buf_push(uint8_t *buf, int len)
 {
-	if (usbd_ep_write_packet(usbdev, 0x85, buf, len) != len) {
+	if (decoding)
+		traceswo_decode(usbdev, CDCACM_UART_ENDPOINT, buf, len);
+	else if (usbd_ep_write_packet(usbdev, USB_REQ_TYPE_IN | TRACE_ENDPOINT, buf, len) != len) {
 		if (trace_usb_buf_size + len > 64) {
 			/* Stall if upstream to too slow. */
-			usbd_ep_stall_set(usbdev, 0x85, 1);
+			usbd_ep_stall_set(usbdev, USB_REQ_TYPE_IN | TRACE_ENDPOINT, 1);
 			trace_usb_buf_size = 0;
 			return;
 		}
@@ -98,7 +105,10 @@ void trace_buf_drain(usbd_device *dev, uint8_t ep)
 	if (!trace_usb_buf_size)
 		return;
 
-	usbd_ep_write_packet(dev, ep, trace_usb_buf, trace_usb_buf_size);
+	if (decoding)
+		traceswo_decode(dev, CDCACM_UART_ENDPOINT, trace_usb_buf, trace_usb_buf_size);
+	else
+		usbd_ep_write_packet(dev, ep, trace_usb_buf, trace_usb_buf_size);
 	trace_usb_buf_size = 0;
 }
 

@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # dfu.py: Access USB DFU class devices
-# Copyright (C) 2009  Black Sphere Technologies 
+# Copyright (C) 2009  Black Sphere Technologies
 # Written by Gareth McMullin <gareth@blacksphere.co.nz>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -17,12 +17,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
- 
+
 import usb
 
 DFU_DETACH_TIMEOUT = 1000
 
-# DFU Requests 
+# DFU Requests
 DFU_DETACH = 0x00
 DFU_DNLOAD = 0x01
 DFU_UPLOAD = 0x02
@@ -62,7 +62,7 @@ DFU_STATUS_ERROR_POR =           0x0d
 DFU_STATUS_ERROR_UNKNOWN =       0x0e
 DFU_STATUS_ERROR_STALLEDPKT =    0x0f
 
-class dfu_status(object):
+class dfu_status:
 	def __init__(self, buf):
 		self.bStatus = buf[0]
 		self.bwPollTimeout = buf[1] + (buf[2]<<8) + (buf[3]<<16)
@@ -70,7 +70,7 @@ class dfu_status(object):
 		self.iString = buf[5]
 
 
-class dfu_device(object):
+class dfu_device:
 	def __init__(self, dev, conf, iface):
 		self.dev = dev
 		self.conf = conf
@@ -87,40 +87,40 @@ class dfu_device(object):
 	def release(self):
 		self.handle.releaseInterface()
 	def detach(self, wTimeout=255):
-		self.handle.controlMsg(usb.ENDPOINT_OUT | usb.TYPE_CLASS | 
-			usb.RECIP_INTERFACE, DFU_DETACH, 
+		self.handle.controlMsg(usb.ENDPOINT_OUT | usb.TYPE_CLASS |
+			usb.RECIP_INTERFACE, DFU_DETACH,
 			None, value=wTimeout, index=self.index)
 
 	def download(self, wBlockNum, data):
 		self.handle.controlMsg(usb.ENDPOINT_OUT | usb.TYPE_CLASS |
 			usb.RECIP_INTERFACE, DFU_DNLOAD,
-			data, value=wBlockNum, index=self.index) 
+			data, value=wBlockNum, index=self.index)
 
 	def upload(self, wBlockNum, length):
-		return self.handle.controlMsg(usb.ENDPOINT_IN | 
+		return self.handle.controlMsg(usb.ENDPOINT_IN |
 			usb.TYPE_CLASS | usb.RECIP_INTERFACE, DFU_UPLOAD,
-			length, value=wBlockNum, index=self.index) 
+			length, value=wBlockNum, index=self.index)
 
 	def get_status(self):
-		buf = self.handle.controlMsg(usb.ENDPOINT_IN | 
+		buf = self.handle.controlMsg(usb.ENDPOINT_IN |
 			usb.TYPE_CLASS | usb.RECIP_INTERFACE, DFU_GETSTATUS,
-			6, index=self.index) 
+			6, index=self.index)
 		return dfu_status(buf)
-		
+
 	def clear_status(self):
-		self.handle.controlMsg(usb.ENDPOINT_OUT | usb.TYPE_CLASS | 
-			usb.RECIP_INTERFACE, DFU_CLRSTATUS, 
+		self.handle.controlMsg(usb.ENDPOINT_OUT | usb.TYPE_CLASS |
+			usb.RECIP_INTERFACE, DFU_CLRSTATUS,
 			"", index=0)
 
 	def get_state(self):
-		buf = self.handle.controlMsg(usb.ENDPOINT_IN | 
+		buf = self.handle.controlMsg(usb.ENDPOINT_IN |
 			usb.TYPE_CLASS | usb.RECIP_INTERFACE, DFU_GETSTATE,
-			1, index=self.index) 
+			1, index=self.index)
 		return buf[0]
 
 	def abort(self):
-		self.handle.controlMsg(usb.ENDPOINT_OUT | usb.TYPE_CLASS | 
-			usb.RECIP_INTERFACE, DFU_ABORT, 
+		self.handle.controlMsg(usb.ENDPOINT_OUT | usb.TYPE_CLASS |
+			usb.RECIP_INTERFACE, DFU_ABORT,
 			None, index=self.index)
 
 
@@ -138,7 +138,7 @@ class dfu_device(object):
 			if status.bState == STATE_DFU_IDLE:
 				return True
 
-			if ((status.bState == STATE_DFU_DOWNLOAD_SYNC) or 
+			if ((status.bState == STATE_DFU_DOWNLOAD_SYNC) or
 			    (status.bState == STATE_DFU_DOWNLOAD_IDLE) or
 			    (status.bState == STATE_DFU_MANIFEST_SYNC) or
 			    (status.bState == STATE_DFU_UPLOAD_IDLE) or
@@ -157,7 +157,7 @@ class dfu_device(object):
 
 			if ((status.bState == STATE_APP_DETACH) or
 			    (status.bState == STATE_DFU_MANIFEST_WAIT_RESET)):
-                		usb.reset(self.handle)
+				usb.reset(self.handle)
 				return False
 
 		raise Exception
@@ -178,16 +178,16 @@ def finddevs():
 if __name__ == "__main__":
 	devs = finddevs()
 	if not devs:
-		print "No devices found!"
+		print("No devices found!")
 		exit(-1)
 
 	for dfu in devs:
 		handle = dfu[0].open()
 		man = handle.getString(dfu[0].iManufacturer, 30)
 		product = handle.getString(dfu[0].iProduct, 30)
-		print "Device %s: ID %04x:%04x %s - %s" % (dfu[0].filename, 
-			dfu[0].idVendor, dfu[0].idProduct, man, product)
-		print "%r, %r" % (dfu[1], dfu[2])
+		print("Device %s: ID %04x:%04x %s - %s" % (dfu[0].filename,
+			dfu[0].idVendor, dfu[0].idProduct, man, product))
+		print("%r, %r" % (dfu[1], dfu[2]))
 
 
 
